@@ -1,0 +1,8 @@
+# algo_portfolio/requirements.txt
+
+numpy
+pandas
+matplotlib
+scipy
+pykrx
+openpyxl
