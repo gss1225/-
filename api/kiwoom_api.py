@@ -1,6 +1,9 @@
 import httpx
 import os
 
+from core.logger import get_logger
+logger = get_logger(__name__)
+
 def _get_app_key():
     return os.getenv('KIWOOM_APP_KEY')
 
@@ -27,6 +30,7 @@ class KiwoomAPI:
                 'secretkey': _get_key()
             }
         )
+        logger.info(response.json())
         response.raise_for_status()
 
         access_token_data = response.json()
