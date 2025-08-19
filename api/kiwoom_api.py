@@ -25,7 +25,7 @@ class KiwoomAPI:
         response = httpx.post(
             url,
             headers=self.headers,
-            data={
+            json={
                 'grant_type': 'client_credentials',
                 'appkey': _get_app_key(),
                 'secretkey': _get_key()
@@ -50,7 +50,7 @@ class KiwoomAPI:
         response = httpx.post(
             url,
             headers=self.headers,
-            data={
+            json={
                 'appkey': _get_app_key(),
                 'secretkey': _get_key(),
                 'token': self.access_token
@@ -75,7 +75,7 @@ class KiwoomAPI:
         response = httpx.post(
             url,
             headers=headers,
-            data={
+            json={
                 'stk_cd': stock_code
             }
         )
