@@ -1,5 +1,6 @@
 import httpx
 import os
+import json
 
 from core.logger import get_logger
 logger = get_logger(__name__)
@@ -30,7 +31,9 @@ class KiwoomAPI:
                 'secretkey': _get_key()
             }
         )
-        logger.info(response.json())
+        print('Code:', response.status_code)
+        print('Header:', json.dumps({key: response.headers.get(key) for key in ['next-key', 'cont-yn', 'api-id']}, indent=4, ensure_ascii=False))
+        print('Body:', json.dumps(response.json(), indent=4, ensure_ascii=False))
         response.raise_for_status()
 
         access_token_data = response.json()
