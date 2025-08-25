@@ -4,68 +4,67 @@ import pandas as pd
 import numpy as np
 from sqlite3 import Connection
 
-from tools.utils import get_quater
 from core import database
+from core.schemas import Company
+from tools.utils import to_df
 
-def find_undervalued_assets(conn: Connection, start_date: datetime, end_date: datetime):
-    companies = database.fetch_all_companies(conn)
-    dps_info, dps_dates = get_recent_dps_and_growth(conn, end_date.year)
-    capm_info = get_capm_required_return(conn, companies.index.tolist(), start_date, end_date)
+# TODO fix to reuse df
+def find_undervalued_assets(conn: Connection, companies: list[Company], start_date: datetime, end_date: datetime):
+    start = start_date.strftime('%Y%m%d')
+    end = end_date.strftime('%Y%m%d')
+    company_df = to_df(companies, 'stock_code')
+    dps_info = get_recent_dps_and_growth(conn, end_date.year)
+    capm_info = get_capm_required_return(conn, companies, start, end)
     
-    df = companies.join(dps_info, how='left').join(capm_info, how='left')
+    df = company_df.join(dps_info, how='left').join(capm_info, how='left')
     df['fair_value'] = df.apply(lambda row: get_ggm_fair_value(
-        row['current_dps'], row['growth'], row['required_return']), axis=1)
+        row['dps'], row['growth'], row['required_return']), axis=1)
     
-    df['current_price'] = database.fetch_close_price_from_date_pykrx(conn, end_date)
+    df['current_price'] = to_df(database.fetch_stock_day_by_date(conn, end), 'stock_code', ['close_price'])  # technically close price
+    alt_df = dcf_alternative(conn, companies, end_date)
+    df = df.join(alt_df[['V', 'market_cap']], how='left')
 
-    # logic TODO
-    df['undervalued'] = df['current_price'] < df['fair_value']  # ggm
-    
+    df['undervalued'] = (df['current_price'] < df['fair_value']) | (df['V'] > df['market_cap'])
+
     return df
 
-def get_recent_dps_and_growth(conn: Connection, year: int) -> tuple[pd.DataFrame, list[datetime]]:
+def get_recent_dps_and_growth(conn: Connection, year: int) -> pd.DataFrame:
     '''
-    Returns
-     - dataframe for recent DPS and growth rate for the last two years.
-        index: stock_code
-        columns: previous_dps, current_dps, growth
-     - queried dates for dps data. year of the dates is the same as the column names.
+    제작년 및 작년 배당금 이용
     '''
     dps_df = pd.DataFrame()
 
-    current = database.fetch_closest_date(conn, get_quater(year))
-    previous = database.fetch_closest_date(conn, get_quater(year - 1))
-    if current is None or previous is None:
-        raise ValueError(f'No data for {year} or {year - 1}')
+    dps_df['dps'] = to_df(database.fetch_stock_year(conn, year-1), 'stock_code', ['dps'])
+    dps_df['dps_prev'] = to_df(database.fetch_stock_year(conn, year-2), 'stock_code', ['dps'])
 
-    dates = [current, previous]
-    dps_df['current_dps'] = database.fetch_dps_from_date_pykrx(conn, current)
-    dps_df['previous_dps'] = database.fetch_dps_from_date_pykrx(conn, previous)
+    dps_df['growth'] = dps_df.apply(lambda row: (row['dps'] / row['dps_prev']) - 1 if row['dps_prev'] > 0 else 0.0, axis=1)
 
-    dps_df = dps_df.fillna(0.0)
-    dps_df['growth'] = dps_df.apply(lambda row: (row['current_dps'] / row['previous_dps']) - 1 if row['previous_dps'] > 0 else 0.0, axis=1)
+    return dps_df
 
-    return dps_df, dates
-
-def get_capm_required_return(conn: Connection, stock_codes: list[str], start_date: datetime, end_date: datetime, rf: float = 0.03):
+def get_capm_required_return(conn: Connection, companies: list[Company], start: str, end: str, rf: float = 0.03):
     '''
-    Returns a DataFrame with required return for each stock_code using CAPM.
+    Returns a DataFrame indexed by 'stock_code' with required return for each stock_code using CAPM.
     DataFrame columns:
-        - stock_code: stock stock_code
         - market_return: annualized market return
         - required_return: required return
     '''
     results = []
-    for stock_code in stock_codes:
-        stock_price = database.fetch_close_price_from_stock_pykrx(conn, stock_code, start_date, end_date)
-        stock_ret = stock_price.pct_change()
+    for company in companies:
+        stock_code = company.stock_code
+        stock_price = to_df(database.fetch_stock_day_by_stock(conn, stock_code, start, end), 'date', ['close_price']).sort_index()
+        stock_ret = stock_price['close_price'].pct_change()
 
-        kospi_price = database.fetch_kospi_data(conn, start_date, end_date)['close_price']
+        kospi_price = to_df(database.fetch_kospi(conn, start, end), 'date', ['close_price'])
         if kospi_price.empty:
-            raise ValueError(f"KOSPI data is empty for {start_date} to {end_date}")
-        kospi_ret = kospi_price.pct_change()
+            raise ValueError(f"KOSPI data is empty for {start} to {end}")
+        kospi_ret = kospi_price['close_price'].pct_change()
 
-        aligned = pd.concat([stock_ret, kospi_ret], axis=1, keys=["stock", "market"]).dropna()
+        # Align both Series on their common dates
+        common_dates = stock_ret.index.intersection(kospi_ret.index)
+        stock_ret_aligned = stock_ret.loc[common_dates]
+        kospi_ret_aligned = kospi_ret.loc[common_dates]
+
+        aligned = pd.concat([stock_ret_aligned, kospi_ret_aligned], axis=1, keys=["stock", "market"]).dropna()
         if aligned.empty:
             print(f"{stock_code} data empty")
             continue
@@ -92,17 +91,20 @@ def get_ggm_fair_value(recent_dps: float, g: float, r: float):
     fair_value = recent_dps * (1 + g) / (r - g)
     return fair_value
 
-def get_unnamed(conn: Connection, date: datetime, r: float = 0.1):
-    data = database.fetch_all_companies(conn)
-    market_cap = database.fetch_cap_pykrx(conn, date)
-    dart_data = database.fetch_dart_from_year(conn, date.year-1)
+def dcf_alternative(conn: Connection, companies: list[Company], date: datetime, r: float = 0.03):
+    data = to_df(companies, 'stock_code')
+    market_cap = to_df(database.fetch_stock_day_by_date(conn, date.strftime('%Y%m%d')), 'stock_code', ['market_cap'])
+    if market_cap.empty:
+        raise ValueError(f"시가총액 정보가 없음 - {date}")
+    stock_data = to_df(database.fetch_stock_year(conn, date.year-1), 'stock_code', ['capital', 'net_profit'])
+    net_profit_pprev = to_df(database.fetch_stock_year(conn, date.year-3), 'stock_code', ['net_profit'])
+    df = data.join(market_cap).join(stock_data).join(net_profit_pprev, rsuffix='_pprev')
     
-    data = data.join(market_cap).join(dart_data, on='corp_code')
+    g = np.sqrt(df['net_profit'] / df['net_profit_pprev']) - 1
+    ni = df['net_profit'] * g
+    df['V'] = (df['capital'] + (ni - r * df['capital']) / (r - g))
     
-    g = np.sqrt(data['net_profit'] / data['net_profit_pprev']) - 1
-    ni = data['net_profit'] * g
-    v = data['net_profit'] + (ni - r * data['net_profit']) / (r - g)
-    return v / data['cap']  # 시가총액과 비교하는것
+    return df
 
 '''
 net_profit is only for last year data

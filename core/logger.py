@@ -18,6 +18,13 @@ console_handler = logging.StreamHandler()
 console_handler.setLevel(logging.INFO)
 console_handler.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
 
+# Suppress httpx logs only in the console
+class HttpxFilter(logging.Filter):
+    def filter(self, record):
+        return not record.name.startswith("httpx")
+
+console_handler.addFilter(HttpxFilter())
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",

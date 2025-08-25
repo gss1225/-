@@ -1,64 +1,62 @@
+
+import pandas as pd
 from sqlite3 import Connection
 
 from pykrx import stock
-from pandas import DataFrame, Series
 from datetime import datetime
 
-from core.database import insert_kospi, insert_pykrx_by_stock, insert_pykrx_by_date,fetch_all_companies
+from core.schemas import Company, Kospi, StockDay
 
 from core.logger import get_logger
 logger = get_logger(__name__)
 
-def update_pykrx(conn: Connection, start: datetime, end: datetime, stock_codes: list[str]|str):
-    if isinstance(stock_codes, str):
-        stock_codes = [stock_codes]
-    for stock_code in stock_codes:
-        try:
-            start_str = start.strftime('%Y%m%d')
-            end_str = end.strftime('%Y%m%d')
-            df = stock.get_market_ohlcv_by_date(start_str, end_str, stock_code)
-            
-            fundamental_df = stock.get_market_fundamental_by_date(start_str, end_str, stock_code)
-            dps = fundamental_df['DPS']
-            
-            cap_df = stock.get_market_cap_by_date(start_str, end_str, stock_code)
-            cap = cap_df['시가총액']
-            
-            df = df.join(dps, how='left').join(cap, how='left')
-            insert_pykrx_by_stock(conn, stock_code, df)
-            logger.info(f"Updated {stock_code} from {start_str} to {end_str}")
-        except Exception as e:
-            logger.error(f"Error fetching data for {stock_code}: {e}")
-            continue
-
-def update_daily(conn: Connection, date: datetime):
-    assets = fetch_all_companies(conn).index.tolist()
-    date_str = date.strftime('%Y%m%d')
-    data = stock.get_market_ohlcv_by_ticker(date_str)
-    if data.empty:
-        logger.info(f"Skipped update for {date_str}")
-        return  # Non business day
-    fundamental_data = stock.get_market_fundamental_by_ticker(date_str)['DPS']
-
-    df = data[data.index.isin(assets)]
-    df = df.join(fundamental_data, how='left')
-    insert_pykrx_by_date(conn, date, df)
-    logger.info(f"Updated stock data in {date_str} for {len(df)} companies")
-    
-    update_kospi(conn, date, date)
-
-def update_kospi(conn: Connection, start: datetime, end: datetime):
+def get_init_stock_day_pykrx(start: str, end: str, stock_code: str) -> list[StockDay]:
     try:
-        start_str = start.strftime('%Y%m%d')
-        end_str = end.strftime('%Y%m%d')
-        df = stock.get_index_ohlcv_by_date(start_str, end_str, "1001")
-        if df.empty:
-            return
-        insert_kospi(conn, df)
-        if start == end:
-            logger.info(f"Updated KOSPI data for {start_str}")
-        else:
-            logger.info(f"Updated KOSPI data from {start_str} to {end_str}")
-        
+        df = stock.get_market_ohlcv_by_date(start, end, stock_code)
+        cap_df = stock.get_market_cap_by_date(start, end, stock_code)
     except Exception as e:
-        logger.error(f"Error fetching KOSPI data: {e}")
+        logger.error(f"pykrx 주식 정보 조회 주 오류. {stock_code}: {e}")
+        return []
+    cap = cap_df['시가총액']
+    df = df.join(cap, how='left')
+    stock_days = []
+    for date, row in df.iterrows():
+        stock_days.append(StockDay(
+            stock_code=stock_code,
+            date=date.strftime('%Y%m%d'),
+            close_price=row['종가'],
+            trade_qty=row['거래량'],
+            market_cap=row['시가총액'],
+            stock_count=None
+        ))
+    return stock_days
+
+def get_stock_day_pykrx(date: str, companies: list[Company]) -> list[StockDay]:
+    data = stock.get_market_ohlcv_by_ticker(date)
+    if data.empty:
+        logger.info(f"주식 데이터 없음: {date}")
+        return []  # Non business day
+    
+    assets = [company.stock_code for company in companies]
+    df = data[data.index.isin(assets)]
+    stock_days = []
+    for stock_code, row in df.iterrows():
+        stock_days.append(StockDay(
+            stock_code=stock_code,
+            date=date,
+            close_price=row['종가'],
+            trade_qty=row['거래량'],
+            market_cap=row['시가총액'],
+            stock_count=None
+        ))
+    
+    return stock_days
+
+def get_kospi(start: str, end: str) -> list[Kospi]:
+    df = stock.get_index_ohlcv_by_date(start, end, "1001")
+
+    return [Kospi(
+        date=date.strftime('%Y%m%d'),
+        close_price=row['종가'],
+        trade_qty=row['거래량']
+    ) for date, row in df.iterrows()]

@@ -3,12 +3,7 @@ import os
 import json
 import zipfile
 import xml.etree.ElementTree as ET
-
 from io import BytesIO
-from sqlite3 import Connection
-
-from core.database import insert_dart, insert_companies, fetch_dart_from_year
-from tools.utils import to_int, to_float
 
 from core.logger import get_logger
 logger = get_logger(__name__)
@@ -89,73 +84,6 @@ class DartAPI:
         response.raise_for_status()
 
         return response.json()
-
-    def update_dart(self, conn: Connection, year: int, corp_codes: list[str]):
-        existing_data = fetch_dart_from_year(conn, year)
-        for corp_code in corp_codes:
-            if corp_code in existing_data.index:
-                logger.info(f"Skipping {corp_code} for year {year}, already exists in database.")
-                continue
-            div_info = self.get_div_info(corp_code, year)['list']
-            fin_info = self.get_fin_info(corp_code, year)['list']
-
-            try:
-                fin_data = next(filter(lambda x: x['ord'] == "21", fin_info))
-            except StopIteration:
-                logger.warning(f"CFS 자본총계를 찾을 수 없음: {corp_code} - {year}")
-                fin_data = next(filter(lambda x: x['ord'] == "22", fin_info), None)
-            if fin_data is None:
-                logger.warning(f"자본총계를 찾을 수 없음: {corp_code} - {year}")
-                continue
-
-            data = {
-                'net_profit': to_int(fin_data['thstrm_amount']),  # B0
-                'net_profit_prev': to_int(fin_data['frmtrm_amount']),
-                'net_profit_pprev': to_int(fin_data['bfefrmtrm_amount'])
-            }
-            
-            
-            for div in div_info:
-                if div['se'] == '주당 현금배당금(원)':
-                    if (stock_knd := div.get('stock_knd')) is not None:
-                        if stock_knd == '보통주' or stock_knd == '보통주식':
-                            data['dps'] = to_float(div['thstrm'])
-                            data['dps_prev'] = to_float(div['frmtrm'])
-                            data['dps_pprev'] = to_float(div['lwfr'])
-                            break
-                        else:
-                            continue  # 우선주가 먼저 발견될 경우 (아마도 없음)
-                    else:  # 주식 구분 안됨, 배당금 없을 가능성 높음
-                        data['dps'] = to_float(div['thstrm'])
-                        data['dps_prev'] = to_float(div['frmtrm'])
-                        data['dps_pprev'] = to_float(div['lwfr'])
-                        break
-            else:
-                logger.warning(f"보통주 정보를 불러올 수 없었음: {corp_code} - {year}")
-                div = next(filter(lambda x: x['se'] == '주당 현금배당금(원)', div_info))
-                data['dps'] = to_float(div['thstrm'])
-                data['dps_prev'] = to_float(div['frmtrm'])
-                data['dps_pprev'] = to_float(div['lwfr'])
-
-            # Process and insert the data into the database
-            insert_dart(conn, corp_code, year, data)
-            logger.info(f"Inserted DART data for {corp_code} in {year}")
-
-def update_companies(conn: Connection, assets: list[str]):
-    with open('data/corpcode.json', 'r', encoding='utf-8') as f:
-        company_data = json.load(f)
-        
-    stock_codes = []
-    names = []
-    corp_codes = []
-    for company in company_data['list']:
-        if company['stock_code'] in assets:
-            stock_codes.append(company['stock_code'])
-            names.append(company['corp_name'])
-            corp_codes.append(company['corp_code'])
-            
-    insert_companies(conn, stock_codes, names, corp_codes)
-    logger.info(f"Inserted {len(stock_codes)} companies into the database.")
 
 '''
 배당에 관한 사항 개발가이드

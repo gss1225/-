@@ -2,13 +2,12 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from datetime import datetime, timedelta
-from pykrx import stock
+from datetime import datetime
 from scipy.optimize import minimize
 from sqlite3 import Connection
 
 from core import database
-
+from tools.utils import to_df
 
 
 def negative_sharpe_ratio(w, mu, Sigma, rf):
@@ -17,10 +16,10 @@ def negative_sharpe_ratio(w, mu, Sigma, rf):
     sharpe = (ret - rf) / vol
     return -sharpe
 
-def get_returns(conn: Connection, assets: list[str], start: datetime, end: datetime) -> pd.DataFrame:
+def get_returns(conn: Connection, assets: list[str], start: str, end: str) -> pd.DataFrame:
     price_df = pd.DataFrame()
     for stock_code in assets:
-        close_prices = database.fetch_close_price_from_stock_pykrx(conn, stock_code, start, end)
+        close_prices = to_df(database.fetch_stock_day_by_stock(conn, stock_code, start, end), 'date', ['close_price'])
         price_df[stock_code] = close_prices
     price_df = price_df.dropna(axis=1, how='all')
     returns = price_df.pct_change().dropna()
@@ -121,7 +120,7 @@ def optimize_portfolio(conn: Connection, assets: list[str], lambdas: list[float]
     }
 
 def graph_lambda(conn, results, assets):
-    names = database.fetch_companies(conn, assets)['name']
+    names = to_df(database.fetch_companies(conn, assets), columns=['name'])
 
     # 결과 출력
     for res in results:
@@ -174,18 +173,30 @@ def graph_lambda(conn, results, assets):
 
 
 def graph_sharpe(conn, result, assets):
-    names = database.fetch_companies(conn, assets)['name']
+    names = to_df(database.fetch_companies(conn, assets), columns=['name'])
     
     print(f"\n=== Sharpe 비율 최적화 결과 ===")
     print(f"기대수익률: {result['기대수익률']:.4%}")
     print(f"표준편차: {result['표준편차']:.4%}")
     print(f"Sharpe 비율: {result['Sharpe 비율']:.4f}")
     print("--- 포트폴리오 비중 ---")
-    for stock_code, weight in zip(assets, result['비중']):
+    sorted_results = sorted(
+        ((stock_code, weight) for stock_code, weight in zip(assets, result['비중']) if weight >= 0.0001),
+        key=lambda x: x[1],
+        reverse=True
+    )
+
+    sorted_names = []
+    sorted_weights = []
+    for stock_code, weight in sorted_results:
         print(f"{names[stock_code]:<20}: {weight:.4f}")
+        sorted_names.append(names[stock_code])
+        sorted_weights.append(weight)
+
+    print(type(sorted_results[1][0]))
 
     plt.figure(figsize=(10, 6))
-    plt.bar([names[t] for t in assets], result['비중'])
+    plt.bar(sorted_names, sorted_weights)
     plt.title("Sharpe 최적화 포트폴리오 자산 비중")
     plt.ylabel("비중")
     plt.ylim(0, 1)
