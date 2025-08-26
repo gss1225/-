@@ -16,7 +16,7 @@ from starlette.websockets import WebSocketState, WebSocketDisconnect
 from pathlib import Path
 
 from api.dart_api import DartAPI
-from api.kiwoom_api import KiwoomAPI
+from api.kiwoom_api import KiwoomAPI, parse_account_info
 from core.database import fetch_all_companies, fetch_kospi, fetch_stock_day, fetch_stock_year
 from tools import undervalued, portfolio
 from tools.update import init_stock, update_day
@@ -36,6 +36,7 @@ async def lifespan(app: FastAPI):
         # On shutdown
         global shutdown_flag
         shutdown_flag = True
+        app.kiwoom_api.revoke_access_token()
         for ws in clients[:]:
             try:
                 if (
@@ -52,7 +53,7 @@ app = FastAPI(lifespan=lifespan)
 
 # Instantiate API classes and attach to app
 app.dart_api = DartAPI()
-app.kiwoom_api = KiwoomAPI()
+app.kiwoom_api = KiwoomAPI(api_url='https://mockapi.kiwoom.com')  # TEST
 
 # Mount static files (for CSS/JS if needed)
 if not os.path.exists('webui/static'):
@@ -72,9 +73,10 @@ templates = Jinja2Templates(directory='webui/templates')
 @app.get('/', response_class=HTMLResponse)
 def index(request: Request):
     nav_functions = [
-    {'name': 'View Database Tables', 'endpoint': '/db'},
-    {'name': 'Portfolio Images', 'endpoint': '/portfolio_page'},
-    {'name': 'View Undervalued', 'endpoint': '/undervalued'}
+        {'name': 'View Database Tables', 'endpoint': '/db'},
+        {'name': 'Portfolio Images', 'endpoint': '/portfolio_page'},
+        {'name': 'View Undervalued', 'endpoint': '/undervalued'},
+        {'name': 'Account Info', 'endpoint': '/account_info'}
     ]
     action_functions = [
         {'name': 'Update Today', 'endpoint': '/update_today'},
@@ -272,6 +274,21 @@ def save_portfolio():
     portfolio.graph_sharpe(conn, result['sharpe'], undervalued_assets)
     conn.close()
     return Response(status_code=200)
+
+@app.get('/account_info', response_class=HTMLResponse)
+def acc_info(request: Request):
+    error_message = None
+    parsed = None
+    try:
+        info = app.kiwoom_api.get_account_info()
+        parsed = parse_account_info(info)
+    except Exception as e:
+        error_message = str(e)
+    return templates.TemplateResponse('account_info.html', {
+        'request': request,
+        'parsed': parsed,
+        'error_message': error_message
+    })
 
 # Database table viewer
 @app.get('/db', response_class=HTMLResponse)
