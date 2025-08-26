@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>View Undervalued</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <h1>View Undervalued</h1>
+    <form action="/" method="get" style="margin-bottom: 1em;">
+        <button type="submit">Return to Main Page</button>
+    </form>
+    {% if error_message %}
+        <div style="color:#c00; margin-bottom:12px;">Error: {{ error_message }}</div>
+    {% endif %}
+    {% if rows %}
+    <div>
+        <table>
+            <thead>
+                <tr>
+                {% for col in columns %}
+                    <th>{{ col }}</th>
+                {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+            {% for row in rows %}
+                <tr>
+                {% for col in columns %}
+                    <td>{{ row[col] }}</td>
+                {% endfor %}
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div style="margin-top: 1em;">
+        {% if total_pages > 1 %}
+            <form method="get" action="/undervalued" style="display:inline;">
+                <input type="hidden" name="page_size" value="{{ page_size }}">
+                <button type="submit" name="page" value="{{ page - 1 }}" {% if page <= 1 %}disabled{% endif %}>Previous</button>
+                Page {{ page }} of {{ total_pages }}
+                <button type="submit" name="page" value="{{ page + 1 }}" {% if page >= total_pages %}disabled{% endif %}>Next</button>
+            </form>
+        {% endif %}
+    </div>
+    {% else %}
+        <p>No undervalued assets found.</p>
+    {% endif %}
+</body>
+</html>

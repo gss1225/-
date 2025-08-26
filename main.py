@@ -2,20 +2,23 @@
 import os
 import sqlite3
 import asyncio
-from typing import List
+from datetime import datetime
 from contextlib import asynccontextmanager
+from typing import List
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, Request, Query, WebSocket
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi import Response
 from starlette.websockets import WebSocketState, WebSocketDisconnect
-from dotenv import load_dotenv
+from pathlib import Path
 
 from api.dart_api import DartAPI
 from api.kiwoom_api import KiwoomAPI
 from core.database import fetch_all_companies, fetch_kospi, fetch_stock_day, fetch_stock_year
+from tools import undervalued, portfolio
 from tools.update import init_stock, update_day
 
 load_dotenv()
@@ -56,6 +59,11 @@ if not os.path.exists('webui/static'):
     os.makedirs('webui/static')
 app.mount('/static', StaticFiles(directory='webui/static'), name='static')
 
+# Mount results directory to serve generated images
+if not os.path.exists('results'):
+    os.makedirs('results', exist_ok=True)
+app.mount('/results', StaticFiles(directory='results'), name='results')
+
 # Set up templates
 if not os.path.exists('webui/templates'):
     os.makedirs('webui/templates')
@@ -64,15 +72,82 @@ templates = Jinja2Templates(directory='webui/templates')
 @app.get('/', response_class=HTMLResponse)
 def index(request: Request):
     nav_functions = [
-        {'name': 'View Database Tables', 'endpoint': '/db'}
+    {'name': 'View Database Tables', 'endpoint': '/db'},
+    {'name': 'Portfolio Images', 'endpoint': '/portfolio_page'},
+    {'name': 'View Undervalued', 'endpoint': '/undervalued'}
     ]
     action_functions = [
-        {'name': 'Update Today', 'endpoint': '/update_today'}
+        {'name': 'Update Today', 'endpoint': '/update_today'},
+        {'name': 'Save Portfolio', 'endpoint': '/portfolio'},
     ]
     return templates.TemplateResponse('index.html', {
         'request': request,
         'nav_functions': nav_functions,
         'action_functions': action_functions
+    })
+
+@app.get('/undervalued', response_class=HTMLResponse)
+def undervalued_view(
+    request: Request,
+    page: int = Query(1),
+    page_size: int = Query(25)
+):
+    rows = []
+    columns = []
+    error_message = None
+    try:
+        conn = sqlite3.connect('data/database.db')
+        companies = fetch_all_companies(conn)
+        end_date = datetime.today()
+        start_date = end_date.replace(year=end_date.year - 3)
+
+        df = undervalued.find_undervalued_assets(conn, companies, start_date, end_date)
+        conn.close()
+        uv = df[df['undervalued'] == True]
+        if not uv.empty:
+            uv = uv.reset_index()  # bring stock_code into columns
+            columns = list(uv.columns)
+            rows = uv.to_dict(orient='records')
+    except Exception as e:
+        error_message = str(e)
+
+    total_rows = len(rows)
+    start_idx = (page - 1) * page_size
+    end_idx = start_idx + page_size
+    paged_rows = rows[start_idx:end_idx]
+    total_pages = (total_rows + page_size - 1) // page_size if page_size else 1
+
+    return templates.TemplateResponse('undervalued.html', {
+        'request': request,
+        'columns': columns,
+        'rows': paged_rows,
+        'page': page,
+        'page_size': page_size,
+        'total_rows': total_rows,
+        'total_pages': total_pages,
+        'error_message': error_message
+    })
+
+@app.get('/portfolio_page', response_class=HTMLResponse)
+def portfolio_page(request: Request):
+    base = Path('results')
+    pngs = []
+    try:
+        if base.exists():
+            for p in base.rglob('*.png'):
+                # Build URL path using /results mount
+                rel = p.relative_to(base).as_posix()
+                pngs.append({
+                    'name': rel,
+                    'url': f'/results/{rel}'
+                })
+    except Exception:
+        pass
+    # Sort by name for consistency
+    pngs.sort(key=lambda x: x['name'])
+    return templates.TemplateResponse('portfolio.html', {
+        'request': request,
+        'images': pngs
     })
 
 
@@ -81,6 +156,17 @@ async def tail_log(websocket: WebSocket, log_path: str):
     await websocket.accept()
     clients.append(websocket)
     last_size = 0
+    # On connect, send entire existing log content (show all lines)
+    try:
+        if os.path.exists(log_path):
+            with open(log_path, 'r', encoding='utf-8') as f:
+                data = f.read()
+                last_size = f.tell()
+            if data:
+                await websocket.send_text(data)
+    except Exception:
+        # If initial full send fails, continue with streaming
+        pass
     try:
         while not shutdown_flag:
             # If the client is no longer connected, stop the loop
@@ -146,7 +232,7 @@ async def tail_log(websocket: WebSocket, log_path: str):
 @app.websocket('/ws/logs')
 async def websocket_logs(websocket: WebSocket):
     log_path = os.path.join('log', 'console.log')
-    # Clear the log file on new websocket connection
+    # Clear the log file on new websocket connection (temporary session log)
     try:
         os.makedirs('log', exist_ok=True)
         with open(log_path, 'w', encoding='utf-8') as f:
@@ -169,6 +255,23 @@ def reset_db(source: str = Query(...)):
     conn = sqlite3.connect('data/database.db')
     init_stock(conn, source, app.dart_api, app.kiwoom_api)
     conn.close()
+
+@app.get('/portfolio')
+def save_portfolio():
+    conn = sqlite3.connect('data/database.db')
+    companies = fetch_all_companies(conn)
+    end_date = datetime.today()
+    start_date = end_date.replace(year=end_date.year - 3)
+
+    undervalued_assets = undervalued.find_undervalued_assets(conn, companies, start_date, end_date)
+    undervalued_true = undervalued_assets[undervalued_assets['undervalued'] == True]
+    undervalued_assets = undervalued_true.index.tolist()
+
+    result = portfolio.optimize_portfolio(conn, undervalued_assets, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], start_date, end_date, rf=0.03)
+    portfolio.graph_lambda(conn, result['lambda_results'], undervalued_assets)
+    portfolio.graph_sharpe(conn, result['sharpe'], undervalued_assets)
+    conn.close()
+    return Response(status_code=200)
 
 # Database table viewer
 @app.get('/db', response_class=HTMLResponse)
@@ -235,4 +338,3 @@ def db(
         'total_rows': total_rows,
         'total_pages': total_pages
     })
-

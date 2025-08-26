@@ -1,5 +1,6 @@
 __pycache__/
 data/
+results/
 *.db
 test*.py
 *.log

@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Portfolio Images</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+        .card { background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.06); }
+        .card img { width: 100%; height: auto; border-radius: 6px; }
+        .card .meta { margin-top: 8px; font-size: 12px; color: #666; word-break: break-all; }
+        .toolbar { display:flex; gap:8px; margin-bottom:16px; align-items:center; }
+        .preview img { max-width: 100%; height:auto; }
+    </style>
+</head>
+<body>
+    <h1>Portfolio Images</h1>
+    <form action="/" method="get" style="margin-bottom: 1em;">
+        <button type="submit">Return to Main Page</button>
+    </form>
+    <div class="toolbar">
+        <input type="text" id="filter" placeholder="Filter by name..." style="padding:6px 8px; width:260px;">
+        <button onclick="clearFilter()">Clear</button>
+        <a href="/" style="margin-left:auto;">Home</a>
+    </div>
+    <div id="grid" class="grid">
+        {% for img in images %}
+        <div class="card" data-name="{{ img.name }}">
+            <a href="{{ img.url }}" target="_blank"><img src="{{ img.url }}" alt="{{ img.name }}" loading="lazy"></a>
+            <div class="meta">{{ img.name }}</div>
+        </div>
+        {% endfor %}
+    </div>
+    <script>
+        const filterInput = document.getElementById('filter');
+        const cards = Array.from(document.querySelectorAll('.card'));
+        function applyFilter() {
+            const q = filterInput.value.toLowerCase();
+            cards.forEach(c => {
+                const name = c.getAttribute('data-name').toLowerCase();
+                c.style.display = name.includes(q) ? '' : 'none';
+            });
+        }
+        function clearFilter(){ filterInput.value=''; applyFilter(); }
+        filterInput.addEventListener('input', applyFilter);
+    </script>
+</body>
+</html>
