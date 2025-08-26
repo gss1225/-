@@ -69,6 +69,9 @@ class DartAPI:
         }
         response = httpx.get(url, params=params)
         response.raise_for_status()
+        if response.status_code != 200:
+            logger.error(f"Error fetching div info: {response.status_code} - {response.text}")
+            raise httpx.HTTPError("Aborting div info fetch")
 
         return response.json()
 
@@ -82,6 +85,10 @@ class DartAPI:
         }
         response = httpx.get(url, params=params)
         response.raise_for_status()
+        
+        if response.status_code != 200:
+            logger.error(f"Error fetching fin info: {response.status_code} - {response.text}")
+            raise httpx.HTTPError("Aborting fin info fetch")
 
         return response.json()
 

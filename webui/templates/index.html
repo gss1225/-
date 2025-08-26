@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Stock King Web UI</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <h1>Stock King Web UI</h1>
+        <ul style="margin-bottom:32px;">
+            {% for func in nav_functions %}
+            <li style="margin-bottom:8px;">
+                <form action="{{ func.endpoint }}" method="get" style="display:inline;">
+                    <button type="submit">{{ func.name }}</button>
+                </form>
+            </li>
+            {% endfor %}
+        </ul>
+        <ul style="margin-bottom:32px;">
+            {% for func in action_functions %}
+            <li style="margin-bottom:8px;">
+                <button class="action-btn" data-endpoint="{{ func.endpoint }}" style="background:#007bff;color:#fff;border:none;padding:8px 16px;border-radius:4px;">{{ func.name }}</button>
+                <!-- No status message needed -->
+            </li>
+            {% endfor %}
+        </ul>
+    <!-- Log Console Panel -->
+    <div id="terminal-log" style="width:900px;max-width:95vw;margin:32px auto 0 auto;background:#f8f9fa;color:#333;font-family:monospace;font-size:14px;overflow-y:auto;z-index:10;padding:16px 18px;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,0.08);border:1px solid #e0e0e0;min-height:120px;">
+        <div style="font-weight:bold;margin-bottom:8px;font-size:15px;color:#555;">Live Log Output</div>
+        <div id="terminal-content">Loading logs...</div>
+    </div>
+    <!-- Floating Reset DB Button -->
+    <button id="reset-db-btn" style="position: fixed; bottom: 32px; right: 32px; z-index: 1000; background: #dc3545; color: #fff; border: none; border-radius: 4px; width: 120px; height: 48px; font-size: 1em; box-shadow: 0 2px 8px rgba(0,0,0,0.2); cursor: pointer;">Reset DB</button>
+    <!-- Popup Dialog -->
+    <div id="reset-db-popup" style="display:none; position: fixed; bottom: 100px; right: 32px; background: #fff; border: 1px solid #888; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.2); padding: 24px; z-index: 1001; min-width: 220px;">
+        <h3 style="margin-top:0;">Reset Database</h3>
+        <p>Select source:</p>
+        <button onclick="resetDb('pykrx')" style="background:#007bff;color:#fff;border:none;padding:8px 16px;margin-right:8px;border-radius:4px;">pykrx</button>
+        <button onclick="resetDb('kiwoom')" style="background:#007bff;color:#fff;border:none;padding:8px 16px;border-radius:4px;">kiwoom</button>
+        <button onclick="closePopup()" style="background:#6c757d;color:#fff;border:none;padding:8px 16px;margin-left:8px;border-radius:4px;">Close</button>
+        <div id="reset-db-status" style="margin-top:12px;color:#28a745;"></div>
+    </div>
+    <script>
+    // Live log output via WebSocket
+    const logContent = document.getElementById('terminal-content');
+    let logLines = [];
+    function addLogLines(newText) {
+        const lines = newText.split(/\r?\n/).filter(Boolean);
+        logLines = logLines.concat(lines);
+        if (logLines.length > 50) logLines = logLines.slice(-50);
+        logContent.innerHTML = logLines.map(line => line.replace(/</g,'&lt;').replace(/>/g,'&gt;')).join('<br>');
+        const terminal = document.getElementById('terminal-log');
+        if (terminal.scrollHeight - terminal.scrollTop < terminal.clientHeight + 60) {
+            terminal.scrollTop = terminal.scrollHeight;
+        }
+    }
+    function startLogWebSocket() {
+        let wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
+        let ws = new WebSocket(wsProto + '://' + location.host + '/ws/logs');
+        ws.onmessage = function(event) {
+            addLogLines(event.data);
+        };
+        ws.onclose = function() {
+            setTimeout(startLogWebSocket, 2000); // reconnect
+        };
+    }
+    startLogWebSocket();
+    // Action button logic (internal update, refresh log)
+    document.querySelectorAll('.action-btn').forEach(function(btn) {
+        btn.onclick = function() {
+            btn.disabled = true;
+            fetch(btn.dataset.endpoint, { method: 'GET' })
+                .finally(() => { btn.disabled = false; });
+        };
+    });
+    // Reset DB popup logic
+    const btn = document.getElementById('reset-db-btn');
+    const popup = document.getElementById('reset-db-popup');
+    const statusDiv = document.getElementById('reset-db-status');
+    btn.onclick = () => { popup.style.display = 'block'; statusDiv.textContent = ''; };
+    function closePopup() { popup.style.display = 'none'; }
+    function resetDb(source) {
+        // Close the popup and send the request silently (no messages)
+        closePopup();
+        fetch(`/reset?source=${encodeURIComponent(source)}`, { method: 'GET' })
+            .catch(() => {});
+    }
+    </script>
+</body>
+</html>

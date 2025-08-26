@@ -1,10 +1,13 @@
 import json
+from datetime import datetime
 from sqlite3 import Connection
+from typing import Literal
 
 from api.dart_api import DartAPI
 from api.kiwoom_api import KiwoomAPI
 from api.pykrx import get_stock_day_pykrx, get_init_stock_day_pykrx, get_kospi
 from core import database
+from core.assets import get_assets
 from core.database import insert_kospi, insert_stock_day
 from core.schemas import Company, Kospi, StockDay, StockYear
 from tools.utils import to_int, to_float
@@ -12,15 +15,46 @@ from tools.utils import to_int, to_float
 from core.logger import get_logger
 logger = get_logger(__name__)
 
+def init_stock(conn: Connection, source: Literal['pykrx', 'kiwoom'], dart_api=None, kiwoom_api=None):
+    if source == 'kiwoom' and kiwoom_api is None:
+        raise ValueError("kiwoom_api must be provided when source is 'kiwoom'")
+    assets = get_assets()
+    today = datetime.today()
+    start_date = today.replace(year=today.year - 3)
+    start = start_date.strftime('%Y%m%d')
+    end = today.strftime('%Y%m%d')
+    
+    update_companies(conn, assets)
+    companies = database.fetch_companies(conn, assets)
+    update_dart(dart_api, conn, today.year-1, companies)
+    if source == 'pykrx':
+        init_pykrx(conn, start, end, companies)
+    elif source == 'kiwoom':
+        pass  # init_kiwoom(kiwoom_api, conn, start, end, companies)
+    else:
+        raise ValueError(f"Unknown source: {source}")
+    
+    kospi_data = get_kospi(start, end)
+    insert_kospi(conn, kospi_data)
+    logger.info(f'KOSPI 정보 저장: {start}~{end}, {len(kospi_data)}건')
+
+def update_day(conn: Connection, source: Literal['pykrx', 'kiwoom'], kiwoom_api=None):
+    date = datetime.today().strftime('%Y%m%d')
+    logger.info(f'주식 정보 갱신 시작: {date}, source={source}')
+    if source == 'kiwoom' and kiwoom_api is None:
+        raise ValueError("kiwoom_api must be provided when source is 'kiwoom'")
+    if source == 'pykrx':
+        update_pykrx(conn, date, database.fetch_all_companies(conn))
+    elif source == 'kiwoom':
+        update_kiwoom(kiwoom_api, conn, date, database.fetch_all_companies(conn))
+    else:
+        raise ValueError(f"Unknown source: {source}")
+
 def init_pykrx(conn: Connection, start: str, end: str, companies: list[Company]):
     for company in companies:
         stock_data = get_init_stock_day_pykrx(start, end, company.stock_code)
         insert_stock_day(conn, stock_data)
         logger.info(f'초기 주식 정보 저장: {company.name}, {start}~{end}, {len(stock_data)}건')
-        
-    kospi_data = get_kospi(start, end)
-    insert_kospi(conn, kospi_data)
-    logger.info(f'KOSPI 정보 저장: {start}~{end}, {len(kospi_data)}건')
 
 def init_kiwoom(kiwoom_api: KiwoomAPI, conn: Connection, start: str, end: str, companies: list[Company]):
     pass
@@ -54,7 +88,7 @@ def update_companies(conn: Connection, assets: list[str]):
     database.insert_companies(conn, companies)
     logger.info(f"Inserted {len(companies)} companies into the database.")
         
-def update_dart(dart_api: DartAPI, conn: Connection, year: int, companies: list[Company]):
+def update_dart(dart_api: DartAPI, conn: Connection, year: int, companies: list[Company], update_prev = False):
     for company in companies:
         div_info = dart_api.get_div_info(company.corp_code, year)['list']
         fin_info = dart_api.get_fin_info(company.corp_code, year)['list']
@@ -101,8 +135,9 @@ def update_dart(dart_api: DartAPI, conn: Connection, year: int, companies: list[
 
         insert_data = []
         insert_data.append(StockYear(company.stock_code, year, data['net_profit'], data['capital'], data['dps']))
-        insert_data.append(StockYear(company.stock_code, year-1, data['net_profit_prev'], data['capital_prev'], data['dps_prev']))
-        insert_data.append(StockYear(company.stock_code, year-2, data['net_profit_pprev'], data['capital_pprev'], data['dps_pprev']))
+        if update_prev:
+            insert_data.append(StockYear(company.stock_code, year-1, data['net_profit_prev'], data['capital_prev'], data['dps_prev']))
+            insert_data.append(StockYear(company.stock_code, year-2, data['net_profit_pprev'], data['capital_pprev'], data['dps_pprev']))
 
         database.insert_stock_year(conn, insert_data)
         logger.info(f"DART 정보 갱신: {company.name}, 기준년도: {year}")

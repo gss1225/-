@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Database Viewer</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <h1>Database Table Viewer</h1>
+    <form action="/" method="get" style="margin-bottom: 1em;">
+        <button type="submit">Return to Main Page</button>
+    </form>
+    <form method="get" action="/db">
+        <label for="table">Select Table:</label>
+        <select name="table" id="table" onchange="this.form.submit()">
+            {% for t in tables %}
+            <option value="{{ t }}" {% if t == selected_table %}selected{% endif %}>{{ t }}</option>
+            {% endfor %}
+        </select>
+        {% if selected_table == 'kospi' %}
+            <label for="start">Start:</label>
+            <input type="text" name="start" id="start" value="{{ start }}">
+            <label for="end">End:</label>
+            <input type="text" name="end" id="end" value="{{ end }}">
+        {% elif selected_table == 'stock_daily' %}
+            <label for="start">Start:</label>
+            <input type="text" name="start" id="start" value="{{ start }}">
+            <label for="end">End:</label>
+            <input type="text" name="end" id="end" value="{{ end }}">
+            <label for="date">Date:</label>
+            <input type="text" name="date" id="date" value="{{ date }}">
+            <label for="stock_code">Stock Code:</label>
+            <input type="text" name="stock_code" id="stock_code" value="{{ stock_code }}">
+        {% elif selected_table == 'stock_year' %}
+            <label for="year">Year:</label>
+            <input type="text" name="year" id="year" value="{{ year }}">
+            <label for="stock_code">Stock Code:</label>
+            <input type="text" name="stock_code" id="stock_code" value="{{ stock_code }}">
+        {% endif %}
+        <button type="submit">View</button>
+    </form>
+    {% if rows %}
+    <div>
+        <table>
+            <thead>
+                <tr>
+                {% for col in columns %}
+                    <th>{{ col }}</th>
+                {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+            {% for row in rows %}
+                <tr>
+                {% for col in columns %}
+                    <td>{{ row[col] }}</td>
+                {% endfor %}
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div style="margin-top: 1em;">
+        {% if total_pages > 1 %}
+            <form method="get" action="/db" style="display:inline;">
+                {% for key, value in request.query_params.items() %}
+                    {% if key != 'page' %}
+                        <input type="hidden" name="{{ key }}" value="{{ value }}">
+                    {% endif %}
+                {% endfor %}
+                <button type="submit" name="page" value="{{ page - 1 }}" {% if page <= 1 %}disabled{% endif %}>Previous</button>
+                Page {{ page }} of {{ total_pages }}
+                <button type="submit" name="page" value="{{ page + 1 }}" {% if page >= total_pages %}disabled{% endif %}>Next</button>
+            </form>
+        {% endif %}
+    </div>
+    {% elif selected_table %}
+        <p>No results found.</p>
+    {% endif %}
+</body>
+</html>

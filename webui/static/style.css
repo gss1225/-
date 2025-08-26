@@ -1,0 +1,57 @@
+/* Add to webui/static/style.css for scrollable table body */
+.scrollable-table {
+    max-height: 400px;
+    overflow-y: auto;
+    display: block;
+}
+
+.scrollable-table table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+
+table {
+    border-collapse: collapse;
+    width: 100%;
+}
+th, td {
+    border: 1px solid #888;
+    padding: 8px;
+    text-align: left;
+    background: #fff;
+}
+th {
+    background: #343a40;
+    color: #fff;
+}
+body {
+    font-family: Arial, sans-serif;
+    background: #f8f9fa;
+    margin: 0;
+    padding: 0;
+}
+h1 {
+    background: #343a40;
+    color: #fff;
+    padding: 1rem;
+    margin-bottom: 2rem;
+}
+ul {
+    list-style: none;
+    padding: 0;
+}
+li {
+    margin-bottom: 1rem;
+}
+button {
+    background: #007bff;
+    color: #fff;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    cursor: pointer;
+}
+button:hover {
+    background: #0056b3;
+}

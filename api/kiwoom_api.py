@@ -2,6 +2,8 @@ import httpx
 import os
 import json
 
+import time
+
 from core.logger import get_logger
 logger = get_logger(__name__)
 
@@ -20,9 +22,23 @@ class KiwoomAPI:
         self.token_expiry = None
         self.access_token = None
 
+        self._last_api_call = None
+
+    def _post(self, url, **kwargs):
+        # Rate limit of 5 per sec, 0.25 for safety
+        min_interval = 0.25
+        now = time.time()
+        if self._last_api_call is not None:
+            elapsed = now - self._last_api_call
+            if elapsed < min_interval:
+                time.sleep(min_interval - elapsed)
+        response = httpx.post(url, **kwargs)
+        self._last_api_call = time.time()
+        return response
+
     def get_access_token(self):
         url = f"{self.api_url}/oauth2/token"
-        response = httpx.post(
+        response = self._post(
             url,
             headers=self.headers,
             json={
@@ -45,7 +61,7 @@ class KiwoomAPI:
             return
 
         url = f"{self.api_url}/oauth2/revoke"
-        response = httpx.post(
+        response = self._post(
             url,
             headers=self.headers,
             json={
@@ -64,14 +80,13 @@ class KiwoomAPI:
         if not self.access_token or self.token_expiry is None:
             self.get_access_token()
 
-
         url = f"{self.api_url}/api/dostk/stkinfo"
         headers = {
             **self.headers,
             'authorization': f"Bearer {self.access_token}",
             'api-id': 'ka10001'
         }
-        response = httpx.post(
+        response = self._post(
             url,
             headers=headers,
             json={

@@ -126,11 +126,25 @@ def fetch_companies(conn: sqlite3.Connection, assets: list[str]) -> list[Company
     rows = cursor.fetchall()
     return [Company(*row) for row in rows]
 
-def fetch_kospi(conn: sqlite3.Connection, start: str, end: str) -> list[Kospi]:
+def fetch_kospi(conn: sqlite3.Connection, start: str = 0, end: str = 99999999) -> list[Kospi]:
     cursor = conn.cursor()
     cursor.execute('SELECT * FROM kospi WHERE date BETWEEN ? AND ?', (start, end))
     rows = cursor.fetchall()
     return [Kospi(*row) for row in rows]
+
+def fetch_stock_day(conn: sqlite3.Connection, start: str = 0, end: str = 99999999, stock_code: str = None, date: str = None) -> list[StockDay]:
+    cursor = conn.cursor()
+    query = 'SELECT * FROM stock_daily WHERE date BETWEEN ? AND ?'
+    params = [start, end]
+    if stock_code:
+        query += ' AND stock_code = ?'
+        params.append(stock_code)
+    if date:
+        query += ' AND date = ?'
+        params.append(date)
+    cursor.execute(query, params)
+    rows = cursor.fetchall()
+    return [StockDay(*row) for row in rows]
 
 def fetch_stock_day_by_stock(conn: sqlite3.Connection, stock_code: str, start: str, end: str) -> list[StockDay]:
     cursor = conn.cursor()
@@ -144,9 +158,17 @@ def fetch_stock_day_by_date(conn: sqlite3.Connection, date: str) -> list[StockDa
     rows = cursor.fetchall()
     return [StockDay(*row) for row in rows]
 
-def fetch_stock_year(conn: sqlite3.Connection, year: int) -> list[StockYear]:
+def fetch_stock_year(conn: sqlite3.Connection, year: int = None, stock_code: str = None) -> list[StockYear]:
     cursor = conn.cursor()
-    cursor.execute('SELECT * FROM stock_year WHERE year = ?', (year, ))
+    query = 'SELECT * FROM stock_year'
+    params = []
+    if year:
+        query += ' WHERE year = ?'
+        params.append(year)
+    if stock_code:
+        query += ' AND stock_code = ?'
+        params.append(stock_code)
+    cursor.execute(query, params)
     rows = cursor.fetchall()
     return [StockYear(*row) for row in rows]
 

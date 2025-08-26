@@ -6,3 +6,7 @@ pykrx
 openpyxl
 httpx
 python-dotenv
+fastapi
+uvicorn[standard]
+jinja2
+apscheduler
