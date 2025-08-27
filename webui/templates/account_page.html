@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>Account Page</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .inline { display: inline-block; margin-right: 8px; }
+        table { border-collapse: collapse; }
+        th, td { border: 1px solid #ddd; padding: 6px 8px; }
+        th { background: #f6f6f6; }
+    </style>
+</head>
+<body>
+    <h1>Account</h1>
+    <form action="/" method="get" class="inline">
+        <button type="submit">메인으로</button>
+    </form>
+    <form action="/account_page" method="get" class="inline">
+        <label for="mode">옵션:</label>
+        <select name="mode" id="mode" onchange="this.form.submit()">
+            <option value="balance" {{ 'selected' if mode == 'balance' else '' }}>예수금 조회</option>
+            <option value="valuation" {{ 'selected' if mode == 'valuation' else '' }}>평가금 조회</option>
+        </select>
+    </form>
+
+    {% if error_message %}
+        <div style="color:#c00; margin: 12px 0;">Error: {{ error_message }}</div>
+    {% endif %}
+
+    {% if parsed %}
+        <h2>{{ '평가금 조회' if mode == 'valuation' else '예수금 조회' }}</h2>
+        <table>
+            <tbody>
+            {% for k, v in parsed.items() %}
+                {% if v is sequence and v is not string and v|length > 0 and v[0] is mapping %}
+                    <tr><th colspan="2">{{ k }}</th></tr>
+                    <tr>
+                        <td colspan="2">
+                            <table style="margin:8px 0;">
+                                <thead>
+                                    <tr>
+                                        {% for col in v[0].keys() %}
+                                            <th>{{ col }}</th>
+                                        {% endfor %}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for row in v %}
+                                        <tr>
+                                            {% for col in row.keys() %}
+                                                <td>{{ row[col] }}</td>
+                                            {% endfor %}
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </td>
+                    </tr>
+                {% else %}
+                    <tr>
+                        <th>{{ k }}</th>
+                        <td>{{ v }}</td>
+                    </tr>
+                {% endif %}
+            {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p>데이터가 없습니다.</p>
+    {% endif %}
+</body>
+</html>

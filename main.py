@@ -16,7 +16,7 @@ from starlette.websockets import WebSocketState, WebSocketDisconnect
 from pathlib import Path
 
 from api.dart_api import DartAPI
-from api.kiwoom_api import KiwoomAPI, parse_account_info
+from api.kiwoom_api import KiwoomAPI, parse_account_stock_info, parse_account_info
 from core.database import fetch_all_companies, fetch_kospi, fetch_stock_day, fetch_stock_year, init_db
 from tools import undervalued, portfolio
 from tools.update import init_stock, update_day
@@ -78,7 +78,7 @@ def index(request: Request):
         {'name': 'View Database Tables', 'endpoint': '/db'},
         {'name': 'Portfolio Images', 'endpoint': '/portfolio_page'},
         {'name': 'View Undervalued', 'endpoint': '/undervalued'},
-        {'name': 'Account Info', 'endpoint': '/account_info'}
+        {'name': 'Account Info', 'endpoint': '/account_page'}
     ]
     action_functions = [
         {'name': 'Update Today', 'endpoint': '/update_today'},
@@ -90,6 +90,73 @@ def index(request: Request):
         'nav_functions': nav_functions,
         'action_functions': action_functions
     })
+
+# Database table viewer
+@app.get('/db', response_class=HTMLResponse)
+def db(
+    request: Request,
+    table: str = Query(None),
+    start: str = Query(None),
+    end: str = Query(None),
+    date: str = Query(None),
+    stock_code: str = Query(None),
+    year: int = Query(None),
+    page: int = Query(1),
+    page_size: int = Query(25)
+):
+    tables = ['companies', 'kospi', 'stock_daily', 'stock_year']
+    rows = []
+    columns = []
+    total_rows = 0
+    conn = sqlite3.connect('data/database.db')
+    if table == 'companies':
+        data = fetch_all_companies(conn)
+        if data:
+            columns = data[0].__dataclass_fields__.keys()
+            rows = [c.__dict__ for c in data]
+    elif table == 'kospi':
+        s = start if start else '0'
+        e = end if end else '99999999'
+        data = fetch_kospi(conn, s, e)
+        if data:
+            columns = data[0].__dataclass_fields__.keys()
+            rows = [c.__dict__ for c in data]
+    elif table == 'stock_daily':
+        s = start if start else '0'
+        e = end if end else '99999999'
+        data = fetch_stock_day(conn, s, e, stock_code, date)
+        if data:
+            columns = data[0].__dataclass_fields__.keys()
+            rows = [c.__dict__ for c in data]
+    elif table == 'stock_year':
+        data = fetch_stock_year(conn, year, stock_code)
+        if data:
+            columns = data[0].__dataclass_fields__.keys()
+            rows = [c.__dict__ for c in data]
+    conn.close()
+    # Pagination
+    total_rows = len(rows)
+    start_idx = (page - 1) * page_size
+    end_idx = start_idx + page_size
+    paged_rows = rows[start_idx:end_idx]
+    total_pages = (total_rows + page_size - 1) // page_size if page_size else 1
+    return templates.TemplateResponse('db.html', {
+        'request': request,
+        'tables': tables,
+        'selected_table': table,
+        'start': start or '',
+        'end': end or '',
+        'date': date or '',
+        'stock_code': stock_code or '',
+        'year': year or '',
+        'columns': columns,
+        'rows': paged_rows,
+        'page': page,
+        'page_size': page_size,
+        'total_rows': total_rows,
+        'total_pages': total_pages
+    })
+
 
 @app.get('/undervalued', response_class=HTMLResponse)
 def undervalued_view(
@@ -155,6 +222,47 @@ def portfolio_page(request: Request):
         'images': pngs
     })
 
+@app.get('/account_page', response_class=HTMLResponse)
+def account_page(request: Request, mode: str = Query('balance', pattern='^(valuation|balance)$')):
+    """
+    Account page with dropdown:
+    - valuation (평가금 조회): uses get_account_stock_info() and parse_account_stock_info
+    - balance (예수금 조회): uses get_account_info() and shows raw dict
+    """
+    error_message = None
+    parsed = None
+    try:
+        if mode == 'valuation':
+            info = app.kiwoom_api.get_account_stock_info()
+            parsed = parse_account_stock_info(info)
+        else:  # balance
+            info = app.kiwoom_api.get_account_info()
+            parsed = parse_account_info(info)
+    except Exception as e:
+        error_message = str(e)
+
+    return templates.TemplateResponse('account_page.html', {
+        'request': request,
+        'mode': mode,
+        'parsed': parsed,
+        'error_message': error_message
+    })
+
+
+@app.get('/account_stock_info', response_class=HTMLResponse)
+def acc_info(request: Request):
+    error_message = None
+    parsed = None
+    try:
+        info = app.kiwoom_api.get_account_stock_info()
+        parsed = parse_account_stock_info(info)
+    except Exception as e:
+        error_message = str(e)
+    return templates.TemplateResponse('account_info.html', {
+        'request': request,
+        'parsed': parsed,
+        'error_message': error_message
+    })
 
 # WebSocket endpoint for live log streaming
 async def tail_log(websocket: WebSocket, log_path: str):
@@ -283,84 +391,6 @@ def revoke_token():
     app.kiwoom_api.revoke_access_token()
     return Response(status_code=200)
 
-@app.get('/account_info', response_class=HTMLResponse)
-def acc_info(request: Request):
-    error_message = None
-    parsed = None
-    try:
-        info = app.kiwoom_api.get_account_info()
-        parsed = parse_account_info(info)
-    except Exception as e:
-        error_message = str(e)
-    return templates.TemplateResponse('account_info.html', {
-        'request': request,
-        'parsed': parsed,
-        'error_message': error_message
-    })
 
 
-# Database table viewer
-@app.get('/db', response_class=HTMLResponse)
-def db(
-    request: Request,
-    table: str = Query(None),
-    start: str = Query(None),
-    end: str = Query(None),
-    date: str = Query(None),
-    stock_code: str = Query(None),
-    year: int = Query(None),
-    page: int = Query(1),
-    page_size: int = Query(25)
-):
-    tables = ['companies', 'kospi', 'stock_daily', 'stock_year']
-    rows = []
-    columns = []
-    total_rows = 0
-    conn = sqlite3.connect('data/database.db')
-    if table == 'companies':
-        data = fetch_all_companies(conn)
-        if data:
-            columns = data[0].__dataclass_fields__.keys()
-            rows = [c.__dict__ for c in data]
-    elif table == 'kospi':
-        s = start if start else '0'
-        e = end if end else '99999999'
-        data = fetch_kospi(conn, s, e)
-        if data:
-            columns = data[0].__dataclass_fields__.keys()
-            rows = [c.__dict__ for c in data]
-    elif table == 'stock_daily':
-        s = start if start else '0'
-        e = end if end else '99999999'
-        data = fetch_stock_day(conn, s, e, stock_code, date)
-        if data:
-            columns = data[0].__dataclass_fields__.keys()
-            rows = [c.__dict__ for c in data]
-    elif table == 'stock_year':
-        data = fetch_stock_year(conn, year, stock_code)
-        if data:
-            columns = data[0].__dataclass_fields__.keys()
-            rows = [c.__dict__ for c in data]
-    conn.close()
-    # Pagination
-    total_rows = len(rows)
-    start_idx = (page - 1) * page_size
-    end_idx = start_idx + page_size
-    paged_rows = rows[start_idx:end_idx]
-    total_pages = (total_rows + page_size - 1) // page_size if page_size else 1
-    return templates.TemplateResponse('db.html', {
-        'request': request,
-        'tables': tables,
-        'selected_table': table,
-        'start': start or '',
-        'end': end or '',
-        'date': date or '',
-        'stock_code': stock_code or '',
-        'year': year or '',
-        'columns': columns,
-        'rows': paged_rows,
-        'page': page,
-        'page_size': page_size,
-        'total_rows': total_rows,
-        'total_pages': total_pages
-    })
+

@@ -112,6 +112,26 @@ class KiwoomAPI:
         headers = {
             **self.headers,
             'authorization': f"Bearer {self.access_token}",
+            'api-id': 'kt00001'
+        }
+        response = self._post(
+            url,
+            headers=headers,
+            json={
+                'qry_tp': '3', # 조회구분 3:추정조회, 2:일반조회
+	        }
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def get_account_stock_info(self):
+        if not self.access_token or self.token_expiry is None:
+            self.get_access_token()
+
+        url = f"{self.api_url}/api/dostk/acnt"
+        headers = {
+            **self.headers,
+            'authorization': f"Bearer {self.access_token}",
             'api-id': 'kt00018'
         }
         response = self._post(
@@ -123,8 +143,6 @@ class KiwoomAPI:
             }
         )
         response.raise_for_status()
-        from pprint import pprint
-        pprint(response.json())
         return response.json()
 
     def order(self, stock_code, amount):
@@ -207,7 +225,7 @@ class KiwoomAPI:
         response.raise_for_status()
         return response.json()
 
-def parse_account_info(data):
+def parse_account_stock_info(data):
     """
     Parse Kiwoom account info response into a dict with Korean keys.
     """
@@ -261,6 +279,109 @@ def parse_account_info(data):
         holdings.append(mapped)
     result['계좌평가잔고개별합산'] = holdings
     return result
+
+def parse_account_info(data):
+    # Top-level field mapping
+    top_map = {
+        "entr": "예수금",
+        "profa_ch": "주식증거금현금",
+        "bncr_profa_ch": "수익증권증거금현금",
+        "nxdy_bncr_sell_exct": "익일수익증권매도정산대금",
+        "fc_stk_krw_repl_set_amt": "해외주식원화대용설정금",
+        "crd_grnta_ch": "신용보증금현금",
+        "crd_grnt_ch": "신용담보금현금",
+        "add_grnt_ch": "추가담보금현금",
+        "etc_profa": "기타증거금",
+        "uncl_stk_amt": "미수확보금",
+        "shrts_prica": "공매도대금",
+        "crd_set_grnta": "신용설정평가금",
+        "chck_ina_amt": "수표입금액",
+        "etc_chck_ina_amt": "기타수표입금액",
+        "crd_grnt_ruse": "신용담보재사용",
+        "knx_asset_evltv": "코넥스기본예탁금",
+        "elwdpst_evlta": "ELW예탁평가금",
+        "crd_ls_rght_frcs_amt": "신용대주권리예정금액",
+        "lvlh_join_amt": "생계형가입금액",
+        "lvlh_trns_alowa": "생계형입금가능금액",
+        "repl_amt": "대용금평가금액(합계)",
+        "remn_repl_evlta": "잔고대용평가금액",
+        "trst_remn_repl_evlta": "위탁대용잔고평가금액",
+        "bncr_remn_repl_evlta": "수익증권대용평가금액",
+        "profa_repl": "위탁증거금대용",
+        "crd_grnta_repl": "신용보증금대용",
+        "crd_grnt_repl": "신용담보금대용",
+        "add_grnt_repl": "추가담보금대용",
+        "rght_repl_amt": "권리대용금",
+        "pymn_alow_amt": "출금가능금액",
+        "wrap_pymn_alow_amt": "랩출금가능금액",
+        "ord_alow_amt": "주문가능금액",
+        "bncr_buy_alowa": "수익증권매수가능금액",
+        "20stk_ord_alow_amt": "20%종목주문가능금액",
+        "30stk_ord_alow_amt": "30%종목주문가능금액",
+        "40stk_ord_alow_amt": "40%종목주문가능금액",
+        "100stk_ord_alow_amt": "100%종목주문가능금액",
+        "ch_uncla": "현금미수금",
+        "ch_uncla_dlfe": "현금미수연체료",
+        "ch_uncla_tot": "현금미수금합계",
+        "crd_int_npay": "신용이자미납",
+        "int_npay_amt_dlfe": "신용이자미납연체료",
+        "int_npay_amt_tot": "신용이자미납합계",
+        "etc_loana": "기타대여금",
+        "etc_loana_dlfe": "기타대여금연체료",
+        "etc_loan_tot": "기타대여금합계",
+        "nrpy_loan": "미상환융자금",
+        "loan_sum": "융자금합계",
+        "ls_sum": "대주금합계",
+        "crd_grnt_rt": "신용담보비율",
+        "mdstrm_usfe": "중도이용료",
+        "min_ord_alow_yn": "최소주문가능금액",
+        "loan_remn_evlt_amt": "대출총평가금액",
+        "dpst_grntl_remn": "예탁담보대출잔고",
+        "sell_grntl_remn": "매도담보대출잔고",
+        "d1_entra": "d+1추정예수금",
+        "d1_slby_exct_amt": "d+1매도매수정산금",
+        "d1_buy_exct_amt": "d+1매수정산금",
+        "d1_out_rep_mor": "d+1미수변제소요금",
+        "d1_sel_exct_amt": "d+1매도정산금",
+        "d1_pymn_alow_amt": "d+1출금가능금액",
+        "d2_entra": "d+2추정예수금",
+        "d2_slby_exct_amt": "d+2매도매수정산금",
+        "d2_buy_exct_amt": "d+2매수정산금",
+        "d2_out_rep_mor": "d+2미수변제소요금",
+        "d2_sel_exct_amt": "d+2매도정산금",
+        "d2_pymn_alow_amt": "d+2출금가능금액",
+        "50stk_ord_alow_amt": "50%종목주문가능금액",
+        "60stk_ord_alow_amt": "60%종목주문가능금액",
+    }
+    # Nested stk_entr mapping
+    stk_entr_map = {
+        "crnc_cd": "통화코드",
+        "fx_entr": "외화예수금",
+        "fc_krw_repl_evlta": "원화대용평가금",
+        "fc_trst_profa": "해외주식증거금",
+        "pymn_alow_amt": "출금가능금액",
+        "pymn_alow_amt_entr": "출금가능금액(예수금)",
+        "ord_alow_amt_entr": "주문가능금액(예수금)",
+        "fc_uncla": "외화미수(합계)",
+        "fc_ch_uncla": "외화현금미수금",
+        "dly_amt": "연체료",
+        "d1_fx_entr": "d+1외화예수금",
+        "d2_fx_entr": "d+2외화예수금",
+        "d3_fx_entr": "d+3외화예수금",
+        "d4_fx_entr": "d+4외화예수금",
+    }
+    result = {}
+    for k, v in top_map.items():
+        if k in data:
+            result[v] = data[k]
+    # Handle nested stk_entr list
+    if "stk_entr" in data and isinstance(data["stk_entr"], list):
+        result["종목별예수금"] = [
+            {stk_entr_map.get(ik, ik): item[ik] for ik in item if ik in stk_entr_map}
+            for item in data["stk_entr"]
+        ]
+    return result
+
 
 def parse_ongoing_order(data):
     item_map = {
