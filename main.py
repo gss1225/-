@@ -17,7 +17,7 @@ from pathlib import Path
 
 from api.dart_api import DartAPI
 from api.kiwoom_api import KiwoomAPI, parse_account_info
-from core.database import fetch_all_companies, fetch_kospi, fetch_stock_day, fetch_stock_year
+from core.database import fetch_all_companies, fetch_kospi, fetch_stock_day, fetch_stock_year, init_db
 from tools import undervalued, portfolio
 from tools.update import init_stock, update_day
 
@@ -54,6 +54,7 @@ app = FastAPI(lifespan=lifespan)
 # Instantiate API classes and attach to app
 app.dart_api = DartAPI()
 app.kiwoom_api = KiwoomAPI(api_url='https://mockapi.kiwoom.com')  # TEST
+init_db()
 
 # Mount static files (for CSS/JS if needed)
 if not os.path.exists('webui/static'):
@@ -289,6 +290,7 @@ def acc_info(request: Request):
         'parsed': parsed,
         'error_message': error_message
     })
+
 
 # Database table viewer
 @app.get('/db', response_class=HTMLResponse)
