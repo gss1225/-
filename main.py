@@ -18,10 +18,9 @@ from pathlib import Path
 from api.dart_api import DartAPI
 from api.kiwoom_api import KiwoomAPI, parse_account_stock_info, parse_account_info
 from core.database import fetch_all_companies, fetch_kospi, fetch_stock_day, fetch_stock_year, init_db
+from core.scheduler import start_scheduler, end_scheduler
 from tools import undervalued, portfolio
 from tools.update import init_stock, update_day
-
-load_dotenv()
 
 # Global state for websocket clients and shutdown flag
 clients: List[WebSocket] = []
@@ -36,7 +35,8 @@ async def lifespan(app: FastAPI):
         # On shutdown
         global shutdown_flag
         shutdown_flag = True
-        app.kiwoom_api.revoke_access_token()
+        kiwoom_api.revoke_access_token()
+        end_scheduler()
         for ws in clients[:]:
             try:
                 if (
@@ -49,13 +49,13 @@ async def lifespan(app: FastAPI):
         clients.clear()
 
 
+load_dotenv()
 app = FastAPI(lifespan=lifespan)
-
-# Instantiate API classes and attach to app
-app.dart_api = DartAPI()
-app.kiwoom_api = KiwoomAPI()
-# app.kiwoom_api = KiwoomAPI(api_url='https://mockapi.kiwoom.com')  # TEST
+dart_api = DartAPI()
+kiwoom_api = KiwoomAPI()
+# kiwoom_api = KiwoomAPI(api_url='https://mockapi.kiwoom.com')  # TEST
 init_db()
+start_scheduler()
 
 # Mount static files (for CSS/JS if needed)
 if not os.path.exists('webui/static'):
@@ -233,10 +233,10 @@ def account_page(request: Request, mode: str = Query('balance', pattern='^(valua
     parsed = None
     try:
         if mode == 'valuation':
-            info = app.kiwoom_api.get_account_stock_info()
+            info = kiwoom_api.get_account_stock_info()
             parsed = parse_account_stock_info(info)
         else:  # balance
-            info = app.kiwoom_api.get_account_info()
+            info = kiwoom_api.get_account_info()
             parsed = parse_account_info(info)
     except Exception as e:
         error_message = str(e)
@@ -244,22 +244,6 @@ def account_page(request: Request, mode: str = Query('balance', pattern='^(valua
     return templates.TemplateResponse('account_page.html', {
         'request': request,
         'mode': mode,
-        'parsed': parsed,
-        'error_message': error_message
-    })
-
-
-@app.get('/account_stock_info', response_class=HTMLResponse)
-def acc_info(request: Request):
-    error_message = None
-    parsed = None
-    try:
-        info = app.kiwoom_api.get_account_stock_info()
-        parsed = parse_account_stock_info(info)
-    except Exception as e:
-        error_message = str(e)
-    return templates.TemplateResponse('account_info.html', {
-        'request': request,
         'parsed': parsed,
         'error_message': error_message
     })
@@ -354,19 +338,18 @@ async def websocket_logs(websocket: WebSocket):
         pass
     await tail_log(websocket, log_path)
 
-
 @app.get('/update_today')
 def update_today():
     conn = sqlite3.connect('data/database.db')
-    update_day(conn, 'pykrx')
+    date = update_day(conn)
     conn.close()
-    return Response(status_code=200)
+    return {'date': date}
 
 # Add endpoint to reset DB
 @app.get('/reset')
 def reset_db(source: str = Query(...)):
     conn = sqlite3.connect('data/database.db')
-    init_stock(conn, source, app.dart_api, app.kiwoom_api)
+    init_stock(conn, source, dart_api, kiwoom_api)
     conn.close()
 
 @app.get('/portfolio')
@@ -388,7 +371,7 @@ def save_portfolio():
 
 @app.get('/revoke_token')
 def revoke_token():
-    app.kiwoom_api.revoke_access_token()
+    kiwoom_api.revoke_access_token()
     return Response(status_code=200)
 
 

@@ -39,26 +39,17 @@ def init_stock(conn: Connection, source: Literal['pykrx', 'kiwoom'], dart_api=No
     insert_kospi(conn, kospi_data)
     logger.info(f'KOSPI 정보 저장: {start}~{end}, {len(kospi_data)}건')
 
-def update_day(conn: Connection, source: Literal['pykrx', 'kiwoom'], kiwoom_api=None):
+def update_day(conn: Connection):
     date = datetime.today().strftime('%Y%m%d')
-    logger.info(f'주식 정보 갱신 시작: {date}, source={source}')
-    if source == 'kiwoom' and kiwoom_api is None:
-        raise ValueError("kiwoom_api must be provided when source is 'kiwoom'")
-    if source == 'pykrx':
-        update_pykrx(conn, date, database.fetch_all_companies(conn))
-    elif source == 'kiwoom':
-        update_kiwoom(kiwoom_api, conn, date, database.fetch_all_companies(conn))
-    else:
-        raise ValueError(f"Unknown source: {source}")
+    logger.info(f'주식 정보 갱신 시작: {date}')
+    update_pykrx(conn, date, database.fetch_all_companies(conn))
+    return date
 
 def init_pykrx(conn: Connection, start: str, end: str, companies: list[Company]):
     for company in companies:
         stock_data = get_init_stock_day_pykrx(start, end, company.stock_code)
         insert_stock_day(conn, stock_data)
         logger.info(f'초기 주식 정보 저장: {company.name}, {start}~{end}, {len(stock_data)}건')
-
-def init_kiwoom(kiwoom_api: KiwoomAPI, conn: Connection, start: str, end: str, companies: list[Company]):
-    pass
 
 def update_pykrx(conn: Connection, date: str, companies: list[Company]):
     stock_data = get_stock_day_pykrx(date, companies)
@@ -69,9 +60,6 @@ def update_pykrx(conn: Connection, date: str, companies: list[Company]):
         logger.info(f'주식 정보 갱신: {date}')
     else:
         logger.info(f'갱신할 주식 정보 없음: {date}')
-        
-def update_kiwoom(kiwoom_api: KiwoomAPI, conn: Connection, date: str, companies: list[Company]):
-    pass
 
 def update_companies(conn: Connection, assets: list[str]):
     with open('data/corpcode.json', 'r', encoding='utf-8') as f:

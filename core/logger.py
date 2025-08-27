@@ -42,8 +42,28 @@ logging.basicConfig(
     ]
 )
 
+
 def get_logger(name: str = __name__):
     return logging.getLogger(name)
+
+# Scheduler-specific logger
+def get_scheduler_logger(name: str = "scheduler"):
+    scheduler_log_file = log_dir / "scheduler.log"
+    scheduler_handler = logging.handlers.RotatingFileHandler(
+        scheduler_log_file,
+        mode='a',
+        maxBytes=2*1024*1024,
+        backupCount=3,
+        encoding='utf-8'
+    )
+    scheduler_handler.setLevel(logging.INFO)
+    scheduler_handler.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
+    logger = logging.getLogger(name)
+    # Avoid duplicate handlers
+    if not any(isinstance(h, logging.handlers.RotatingFileHandler) and h.baseFilename == str(scheduler_log_file) for h in logger.handlers):
+        logger.addHandler(scheduler_handler)
+    logger.propagate = False
+    return logger
 
 # copy paste
 # from core.logger import get_logger
