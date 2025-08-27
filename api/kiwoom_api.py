@@ -123,6 +123,8 @@ class KiwoomAPI:
             }
         )
         response.raise_for_status()
+        from pprint import pprint
+        pprint(response.json())
         return response.json()
 
     def order(self, stock_code, amount):
