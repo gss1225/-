@@ -1,4 +1,5 @@
 import json
+import os
 from datetime import datetime
 from sqlite3 import Connection
 from typing import Literal
@@ -23,7 +24,15 @@ def init_stock(conn: Connection, source: Literal['pykrx', 'kiwoom'], dart_api=No
     start_date = today.replace(year=today.year - 3)
     start = start_date.strftime('%Y%m%d')
     end = today.strftime('%Y%m%d')
+
     
+    corpcode_path = os.path.join('data', 'corpcode.json')
+    if not os.path.exists(corpcode_path):
+        if dart_api is not None:
+            dart_api.get_corp_code()
+        else:
+            logger.warning('dart_api is None, cannot fetch corp code.')
+
     update_companies(conn, assets)
     companies = database.fetch_companies(conn, assets)
     update_dart(dart_api, conn, today.year-1, companies)
