@@ -118,7 +118,7 @@ class KiwoomAPI:
             url,
             headers=headers,
             json={
-                'qry_tp': 1,
+                'qry_tp': '1',
                 'dmst_stex_tp': 'KRX'
             }
         )
@@ -144,7 +144,7 @@ class KiwoomAPI:
             json={
                 'dmst_stex_tp': 'KRX', # 국내거래소구분 KRX,NXT,SOR
                 'stk_cd': stock_code, # 종목코드
-                'ord_qty': amount, # 주문수량
+                'ord_qty': str(amount), # 주문수량
                 'ord_uv': '', # 주문단가
                 'trde_tp': '3', # 매매구분 0:보통 , 3:시장가 , 5:조건부지정가 , 81:장마감후시간외 , 61:장시작전시간외, 62:시간외단일가 , 6:최유리지정가 , 7:최우선지정가 , 10:보통(IOC) , 13:시장가(IOC) , 16:최유리(IOC) , 20:보통(FOK) , 23:시장가(FOK) , 26:최유리(FOK) , 28:스톱지정가,29:중간가,30:중간가(IOC),31:중간가(FOK)
                 'cond_uv': '', # 조건단가
@@ -172,7 +172,7 @@ class KiwoomAPI:
             json={
                 'dmst_stex_tp': 'KRX', # 국내거래소구분 KRX,NXT,SOR
                 'stk_cd': stock_code, # 종목코드
-                'ord_qty': amount, # 주문수량
+                'ord_qty': str(amount), # 주문수량
                 'ord_uv': '', # 주문단가
                 'trde_tp': '3', # 매매구분 0:보통 , 3:시장가 , 5:조건부지정가 , 81:장마감후시간외 , 61:장시작전시간외, 62:시간외단일가 , 6:최유리지정가 , 7:최우선지정가 , 10:보통(IOC) , 13:시장가(IOC) , 16:최유리(IOC) , 20:보통(FOK) , 23:시장가(FOK) , 26:최유리(FOK) , 28:스톱지정가,29:중간가,30:중간가(IOC),31:중간가(FOK)
                 'cond_uv': '', # 조건단가
