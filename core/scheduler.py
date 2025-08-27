@@ -9,7 +9,7 @@ def trigger_update_today():
         response = httpx.get('http://127.0.0.1:8000/update_today')
         if response.status_code != 200:
             logger.error(f"주식 갱신 중 오류")
-        logger.info(f'주식 정보 갱신: {response.json().get('date')}')
+        logger.info(f'주식 정보 갱신: {response.json().get("date")}')
     except Exception as e:
         logger.error(f"주식 갱신 중 오류: {e}")
 
