@@ -112,7 +112,7 @@ class KiwoomAPI:
         headers = {
             **self.headers,
             'authorization': f"Bearer {self.access_token}",
-            'api-id': 'kt10018'
+            'api-id': 'kt00018'
         }
         response = self._post(
             url,
