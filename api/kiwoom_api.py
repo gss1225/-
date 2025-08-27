@@ -62,6 +62,7 @@ class KiwoomAPI:
 
     def revoke_access_token(self):
         if not self.access_token:
+            logger.log('No token')
             return
 
         url = f"{self.api_url}/oauth2/revoke"
@@ -124,6 +125,86 @@ class KiwoomAPI:
         response.raise_for_status()
         return response.json()
 
+    def order(self, stock_code, amount):
+        if not self.access_token or self.token_expiry is None:
+            self.get_access_token()
+
+        url = f'{self.api_url}/api/dostk/ordr'
+        headers = {
+            **self.headers,
+            'authorization': f"Bearer {self.access_token}",
+            'api-id': 'kt10000'
+        }
+        logger.info(f'주식 매수: {stock_code}, 수량: {amount}')
+        response = self._post(
+            url,
+            headers=headers,
+            json={
+                'dmst_stex_tp': 'KRX', # 국내거래소구분 KRX,NXT,SOR
+                'stk_cd': stock_code, # 종목코드
+                'ord_qty': amount, # 주문수량
+                'ord_uv': '', # 주문단가
+                'trde_tp': '3', # 매매구분 0:보통 , 3:시장가 , 5:조건부지정가 , 81:장마감후시간외 , 61:장시작전시간외, 62:시간외단일가 , 6:최유리지정가 , 7:최우선지정가 , 10:보통(IOC) , 13:시장가(IOC) , 16:최유리(IOC) , 20:보통(FOK) , 23:시장가(FOK) , 26:최유리(FOK) , 28:스톱지정가,29:중간가,30:중간가(IOC),31:중간가(FOK)
+                'cond_uv': '', # 조건단가
+            }
+        )
+
+        logger.info(f'Order response: {response.status_code} {response.text}')
+        response.raise_for_status()
+        return response.json()
+
+    def sell(self, stock_code, amount):
+        if not self.access_token or self.token_expiry is None:
+            self.get_access_token()
+
+        url = f'{self.api_url}/api/dostk/ordr'
+        headers = {
+            **self.headers,
+            'authorization': f"Bearer {self.access_token}",
+            'api-id': 'kt10001'
+        }
+        logger.info(f'주식 매도: {stock_code}, 수량: {amount}')
+        response = self._post(
+            url,
+            headers=headers,
+            json={
+                'dmst_stex_tp': 'KRX', # 국내거래소구분 KRX,NXT,SOR
+                'stk_cd': stock_code, # 종목코드
+                'ord_qty': amount, # 주문수량
+                'ord_uv': '', # 주문단가
+                'trde_tp': '3', # 매매구분 0:보통 , 3:시장가 , 5:조건부지정가 , 81:장마감후시간외 , 61:장시작전시간외, 62:시간외단일가 , 6:최유리지정가 , 7:최우선지정가 , 10:보통(IOC) , 13:시장가(IOC) , 16:최유리(IOC) , 20:보통(FOK) , 23:시장가(FOK) , 26:최유리(FOK) , 28:스톱지정가,29:중간가,30:중간가(IOC),31:중간가(FOK)
+                'cond_uv': '', # 조건단가
+            }
+        )
+
+        logger.info(f'Order response: {response.status_code} {response.text}')
+        response.raise_for_status()
+        return response.json()
+
+    def ongoing_orders(self):
+        if not self.access_token or self.token_expiry is None:
+            self.get_access_token()
+
+        url = f'{self.api_url}/api/dostk/acnt'
+        headers = {
+            **self.headers,
+            'authorization': f"Bearer {self.access_token}",
+            'api-id': 'ka10075'
+        }
+        response = self._post(
+            url,
+            headers=headers,
+            json={
+                'all_stk_tp': '1', # 전체종목구분 0:전체, 1:종목
+                'trde_tp': '0', # 매매구분 0:전체, 1:매도, 2:매수
+                'stk_cd': '005930', # 종목코드 
+                'stex_tp': '0', # 거래소구분 0 : 통합, 1 : KRX, 2 : NXT
+            }
+        )
+
+        response.raise_for_status()
+        return response.json()
+
 def parse_account_info(data):
     """
     Parse Kiwoom account info response into a dict with Korean keys.
@@ -178,6 +259,11 @@ def parse_account_info(data):
         holdings.append(mapped)
     result['계좌평가잔고개별합산'] = holdings
     return result
+
+def parse_ongoing_order(data):
+    item_map = {
+
+    }
 
 '''
 ka10001 주식기본정보요청 -> 월 1회? 시행. eps, roe, bps, 당기순이익, 영업이익, 매출액 등 정보. 

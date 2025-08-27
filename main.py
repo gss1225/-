@@ -53,7 +53,8 @@ app = FastAPI(lifespan=lifespan)
 
 # Instantiate API classes and attach to app
 app.dart_api = DartAPI()
-app.kiwoom_api = KiwoomAPI(api_url='https://mockapi.kiwoom.com')  # TEST
+app.kiwoom_api = KiwoomAPI()
+# app.kiwoom_api = KiwoomAPI(api_url='https://mockapi.kiwoom.com')  # TEST
 init_db()
 
 # Mount static files (for CSS/JS if needed)
@@ -82,6 +83,7 @@ def index(request: Request):
     action_functions = [
         {'name': 'Update Today', 'endpoint': '/update_today'},
         {'name': 'Save Portfolio', 'endpoint': '/portfolio'},
+        {'name': 'Revoke Token', 'endpoint': '/revoke_token'},
     ]
     return templates.TemplateResponse('index.html', {
         'request': request,
@@ -274,6 +276,11 @@ def save_portfolio():
     portfolio.graph_lambda(conn, result['lambda_results'], undervalued_assets)
     portfolio.graph_sharpe(conn, result['sharpe'], undervalued_assets)
     conn.close()
+    return Response(status_code=200)
+
+@app.get('/revoke_token')
+def revoke_token():
+    app.kiwoom_api.revoke_access_token()
     return Response(status_code=200)
 
 @app.get('/account_info', response_class=HTMLResponse)

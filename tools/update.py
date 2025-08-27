@@ -27,7 +27,7 @@ def init_stock(conn: Connection, source: Literal['pykrx', 'kiwoom'], dart_api=No
 
     update_companies(conn, assets)
     companies = database.fetch_companies(conn, assets)
-    update_dart(dart_api, conn, today.year-1, companies)
+    update_dart(dart_api, conn, today.year-1, companies, update_prev=True)
     if source == 'pykrx':
         init_pykrx(conn, start, end, companies)
     elif source == 'kiwoom':
